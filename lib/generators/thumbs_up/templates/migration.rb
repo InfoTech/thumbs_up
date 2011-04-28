@@ -2,6 +2,7 @@ class ThumbsUpMigration < ActiveRecord::Migration
   def self.up
     create_table :votes, :force => true do |t|
       
+      t.string     :state
       t.boolean    :vote,     :default => false
       t.references :voteable, :polymorphic => true, :null => false
       t.references :voter,    :polymorphic => true

@@ -81,6 +81,7 @@ module ThumbsUp
       #  :order       - A piece of SQL to order by. Eg 'vote_count DESC' or 'voteable.created_at DESC'
       #  :at_least    - Item must have at least X votes
       #  :at_most     - Item may not have more than X votes
+      #  :state       - The 'state' of the vote
       def tally(*args)
         options = args.extract_options!
         
@@ -90,7 +91,11 @@ module ThumbsUp
         t = self.where("#{Vote.table_name}.voteable_type = '#{self.name}'")
 
         # We join so that you can order by columns on the voteable model.
-        t = t.joins("LEFT OUTER JOIN #{Vote.table_name} ON #{self.table_name}.#{self.primary_key} = #{Vote.table_name}.voteable_id")
+        
+        joins = ["LEFT OUTER JOIN #{Vote.table_name} ON #{self.table_name}.#{self.primary_key} = #{Vote.table_name}.voteable_id"]
+        joins << "AND #{Vote.table_name}.state = '#{state}'" if options[:state]
+        
+        t = t.joins(joins.join(" "))
         
         t = t.group("#{Vote.table_name}.voteable_id, #{column_names_for_tally}")
         t = t.limit(options[:limit]) if options[:limit]
@@ -120,13 +125,17 @@ module ThumbsUp
     end
 
     module InstanceMethods
-
+      
+      # this method can be overriden in voteable class to return the current vote state
+      def vote_state
+      end
+      
       def votes_for
-        Vote.where(:voteable_id => id, :voteable_type => self.class.name, :vote => true).count
+        Vote.where(:voteable_id => id, :voteable_type => self.class.name, :vote => true, :state => self.vote_state).count
       end
 
       def votes_against
-        Vote.where(:voteable_id => id, :voteable_type => self.class.name, :vote => false).count
+        Vote.where(:voteable_id => id, :voteable_type => self.class.name, :vote => false, :state => self.vote_state).count
       end
 
       # You'll probably want to use this method to display how 'good' a particular voteable
@@ -136,11 +145,11 @@ module ThumbsUp
       end
 
       def votes_count
-        self.votes.size
+        self.votes.where(:state => self.vote_state).count
       end
 
       def voters_who_voted
-        self.votes.map(&:voter).uniq
+        self.votes.where(:state => self.vote_state).map(&:voter).uniq
       end
 
       def voted_by?(voter)
@@ -148,7 +157,8 @@ module ThumbsUp
               :voteable_id => self.id,
               :voteable_type => self.class.name,
               :voter_type => voter.class.name,
-              :voter_id => voter.id
+              :voter_id => voter.id,
+              :state => self.vote_state
             ).count
       end
 
